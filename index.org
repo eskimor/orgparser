@@ -1,0 +1,45 @@
+#+TITLE: Org parser
+
+[[file:../index.org][up]]                    Org Parser
+
+* TODO Compile via dub and put test programm in app.d
+* Org mode notes a.k.a. Trying to figure out the grammar
+    - An empty line at the end of a subtree is part of the subtree (2.2)
+** Variables:
+   - Form: #+Variable:
+   - #+DRAWERS: DRAWER1 DRAWER 2 
+     Configures drawers to be used.
+   - #+STARTUP: hideblocks
+     Hide all blocks at startup
+   - #+STARTUP: nohideblocks
+     The opposite
+** Lists:
+    - Unordered ones: -,+,*
+    - Ordered ones: '1.' '1)'  
+      - 1) [@20] Enforces it to be 20.
+      - org-alphabetical-lists set, also a., A.
+      - For checkbox lists The [@20] must be before the checkbox
+    - Description lists: Unordered lists with '::' to separate description
+    
+   Items belonging to the same list, must have the same
+   indentation on the first line. An item ends before the next line
+   that is less or equally indented than its bullet/number.
+   
+   A list ends whenever every item has ended, which means before any
+   line less or equally indented than items at top level. It also
+   ends before blank lines.
+** Drawers:
+     :DRAWERNAME:
+     inside the drawer
+     :END:
+   - Syntax: See above.
+   - Special drawers: PROPERTIES & LOGBOOK
+
+** Blocks
+     To be continued: [[info:org#Footnotes]] 
+
+
+
+#+TEST_EXAMPLE
+Hello you
+#+END_EXAMPLE
