@@ -1,0 +1,11 @@
+{
+	"name": "orgparser",
+	"description": "Org mode parser written in D",
+	"homepage": "https://github.com/eskimor/orgparser",
+	"copyright": "Copyright © 2013, Robert Klotzner",
+	"authors": [
+		"Robert Klotzner"
+	],
+	"dependencies": {
+	}
+}
