@@ -18,7 +18,7 @@ void main() {
     auto commentLine = regex(`^\s*#\s.*`);
     assert(match("    \t    # Hello", commentLine));
     auto res=match("Hallo\n", regex(".*$", "m"));
-    assert(res.front.post=="", "Hmm, post is: '"~res.front.post~"'!");
+    assert(res.front.post=="\n", "Hmm, post is: '"~res.front.post~"'!");
     //auto headingRE = regex(`^(\*+)(\s+(\w+)){1}(\s+(\[#\w\])){1}\s+(.*)(\s+(:\w+)(:\w+)*:){1}\s*$`, "m");
     auto headingRE = regex(`^(\*+) (?:\s+(\w+)){0,1} (?:\s+(\[#\w\])){0,1} \s+(.*?) (?:\s+(:(?:\w|@)+)(:(?:\w|@)+)*:){0,1} \s*$`, "mx");
     string[] inputs=[

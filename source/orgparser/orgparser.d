@@ -9,7 +9,9 @@ import std.conv;
 class OrgParser {
     this(string input) {
 	input_=input;
-	cVariables_["TODO"]="TODO | DONE";
+	todoKeywords_=["TODO", "DONE"];
+	heading = regex(`^(\*+) (?:\s+(TODO|DONE)){0,1} (?:\s+(\[#\w\])){0,1} \s+(.*?) (?:\s+(:(?:\w|@)+)(:(?:\w|@)+)*:){0,1} [\s--\n]*`, "x");
+
     }
     void parse() {
 	while(!input_.empty) {
@@ -74,13 +76,10 @@ private:
 	}
 	return tok;
     }
-    string input_;
-    immutable(char)* cTextStart_;
-    Token sToken_;
-    Token cToken_;
-    string[string] cVariables_;
-    static Regex!char headingRE;
     
+    Regex!char heading;
+    void parseHeading(Captures!string caps) {
+    }
     static Regex!char commentLine;
     void parseCommentLine(Captures!string caps) {
 	appendToken(new SimpleToken(caps.hit)).isComment=true;
@@ -89,15 +88,38 @@ private:
     static Regex!char varAssignment;
     void parseVarAssignment(Captures!string caps) {
 	debug(orgparser) { import std.stdio; writefln("Found variable: %s:%s", caps["variable"], caps["value"]); }
-	cVariables_[caps["variable"]]=caps["value"];
+	auto name=caps["variable"];
+	auto value=caps["value"];
+	cVariables_[name]=value;
+	if(name=="TODO") {
+	    todoKeywords_=[];
+	    foreach(todo; splitter(value, regex(`\s+|(\s*\|\s*)`))) {
+		if(!todo.empty)
+		    todoKeywords_~=todo;
+	    }
+	    if(!todoKeywords_.empty) {
+		auto new_heading = `^(\*+) (?:\s+(`;
+		foreach(todo; todoKeywords_) 
+		    new_heading ~= todo ~ "|";
+		new_heading=new_heading[0..$-1];
+		new_heading~=`)){0,1} (?:\s+(\[#\w\])){0,1} \s+(.*?) (?:\s+(:(?:\w|@)+)(:(?:\w|@)+)*:){0,1} [\s--\n]*`;
+		heading=regex(new_heading, "x");
+	    }
+	}
 	appendToken(new SimpleToken(caps.hit));
     }
+    
 
     static this() {
-//	headingRE = regex!(`^(\*+)(\s+(\w+))?(\s+(\[#\w\]))?\s+(.*)(\s+(:\w+)(:\w+)*:)?$`, "m");
 	commentLine = regex(`^[\s--\n]*#\s.*`);
 	varAssignment = regex(`^#\+(?P<variable>\w+):(?P<value>.*)`);
     }
+    string input_;
+    immutable(char)* cTextStart_;
+    Token sToken_;
+    Token cToken_;
+    string[string] cVariables_;
+    string[] todoKeywords_;
 }
 
 unittest {
@@ -106,10 +128,13 @@ unittest {
                # Comment!
 #+TODO: NOTDONE | DONE
 `);
+    assert(parser.todoKeywords_==["TODO", "DONE"]);
     parser.parse();
     assert("TODO" in parser.cVariables_);
     writefln("Found TODO: %s", parser.cVariables_["TODO"]);
+    writefln("Following todo keywords are active: %s", parser.todoKeywords_);
     assert(parser.cVariables_["TODO"]==" NOTDONE | DONE");
+    assert(parser.todoKeywords_==["NOTDONE", "DONE"]);
     writefln("Found text: '%s'", parser.sToken_.text);
     assert(parser.sToken_.text == "* Some heading\n");
     
