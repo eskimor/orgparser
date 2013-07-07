@@ -1,6 +1,8 @@
 module orgparser.orgparser;
 
 import orgparser.node;
+import orgparser.innertext;
+import orgparser.orgcontext;
 
 import std.range;
 import std.regex;
@@ -8,87 +10,142 @@ import std.conv;
 
 
 class OrgParser {
-    this(string input, int pos, TodoWords todoKeys) {
+    
+    this(string input, int pos=0) {
 	input_=input;
 	pos_=pos;
 	todoKeys_=todoKeys;
 	heading = regex(`^(?<=\n)(\*+) (?:\s+(TODO|DONE)){0,1} (?:\s+(\[#\w\])){0,1} \s+(.*?) (?:\s+(:(?:\w|@)+)(:(?:\w|@)+)*:){0,1} [\s--\n]*`, "x");
 
     }
-    Node parse() {
-	while(!current.empty) {
-	    auto c=current.front;
-	    if(parseNode!"heading"())
-		continue;
-	    else if(parseNode!"commentLine"()) 
-		continue;
-	    else if(parseNode!"varAssignment"())
-		continue;
-	    else { // Just text
-		debug(orgparser){import std.stdio; writefln("Found text");}
-		if(cTextStart_ is null)
-		    cTextStart_=input_.ptr;
-		input_.popFront();
+    /**
+     * Apply regular expression at pos and returns SimpleText matching it.
+     *
+     * The provided regular expression must match from the beginning
+     * or not at all. (Put a leading ^ to ensure this.
+     */
+    SimpleText regexParse(Regex!char r) {
+	auto current=data[pos..$];
+	import std.regex;
+	auto res=current.match(r);
+	if(!res)
+	    return null;
+	auto caps=res.captures;
+	assert(caps.pre.empty, "The regular expression has to match from the beginning!");
+	pos_+=caps.front.length;
+	return new SimpleText(res.captures.front);
+    }
+    unittest {
+	auto text="  \tHello";
+	auto parser=new OrgParser(text);
+	auto innerwhite=regex(`^( |\t)+`);
+	auto res=parser.regexParse(innerwhite);
+	assert(res && res.toString=="  \t");
+	assert(parser.current=="Hello");
+	parser.input_="Hello you!";
+	parser.pos_=0;
+	res=parser.regexParse(innerwhite);
+	assert(pos_==0 && res is null);
+    }
+
+    /**
+     * Check whether there is a heading at pos and what level it is.
+     *
+     * Returns:
+     *   0 if it is no heading otherwise its level (1 to n).
+     */
+    int isHeadingLevel() {
+	if(pos_!=0 && input_[pos_-1].front!='\n')
+	    return 0;
+	int count;
+	string current=this.current;
+	int count=0;
+	while(!current.empty && current.front=='*') {
+	    count++;
+	    current.popFront();
+	}
+	if(current.empty || (current.front!=' ' && current.front!='\t'))
+	    return 0;
+	return count;
+    }
+
+    /**
+     * Same as isHeadingLevel, but advances pos.
+     */
+    int parseHeadingLevel() {
+	int res=isHeadingLevel();
+	pos_+=res;
+    }
+
+    /**
+     * If there is a valid todo keyword according to context it is returned.
+     *
+     * Otherwise null is returned. pos gets advanced accordingly.
+     */
+    SimpleText parseTodo() {
+	import std.algorithm;
+	string found=[];
+	foreach(todo; context.todoWords.words) {
+	    if(current.startsWith(todo)) {
+		found=todo;
+		break;
 	    }
 	}
+	if(!found)
+	    return null;
+	if(current[found.length..$].match(`^(\t| )`)) {
+	    pos_+=found.length;
+	    return new SimpleText(found);
+	}
+	return null;
+    }
+
+    /**
+     * Parse priority and returns it as SimpleText.
+     *
+     * The SimpleText object will only contain the actual priority (A-Z) not [#A].
+     */
+    SimpleText parsePriority() {
+	auto res=current.match(`^\[#([A-Z])\]`);
+	if(!res)
+	    return null;
+	auto prio=res.captures[1];
+	assert(prio.length==1, "WTF!");
+	pos_+=res.captures[0].length;
+	return new SimpleText(prio);
+    }
+    
+    /**
+     * The current context of the org file.
+     *
+     * Contains valid todo key words, priorities, variables, ...
+     */
+    ref OrgContext context() {
+	return context_;
+    }
+
+    /**
+     * Create a parser from pos until 'until'
+     *
+     * The part of the input that gets passed to the new parser is
+     * considered consumed in this one.
+     */
+    OrgParser subParser(Regex!char until) {
+	current.
     }
     /**
-     * Parse something specified by what.
+     * Prints exception with context where in the org file the error happened.
      *
-     * Make sure that your regex matches from the beginning, a non
-     * empty "pre" is considered invalid.
- 
-     * Params:
-     *  what = What to parse. Must be one of the regex'es defined in this class.
+     * TODO: Properly implement this, atm the call is just forwarded to std enforce.
      */
-    bool parseNode(string what)() {
-	import std.uni;
-	mixin("auto res=input_.match("~what~");");
-	if (!res)
-	    return false;
-	input_=input_[res.front.pre.length..$];
-	// Ok append leading text:
-	if(cTextStart_ !is null) {
-	    string text=cTextStart_[0..(input_.ptr-cTextStart_)];
-	    appendNode(new SimpleNode(text));
-	    cTextStart_=null;
-	}
-	input_=input_[res.front.hit.length .. $]; // Going forward ...
-	mixin("parse"~capitalizeOnly(what)~"(res.front);");
-	return true;
+    T enforce(T)(T value, lazy const(char)[] msg = null, string file = __FILE__, size_t line = __LINE__) {
+	import std.exception;
+	return enforce(value, msg, file, line);
     }
 private:
     string current() @property {
 	return input_[pos_ .. $];
     }
-    /**
-     * Append node tok to cNode_ and make it the new cNode_.
-     *
-     * Params:
-     *  tok = The node to append and which will become the new current node.
-     * Returns:
-     *  The appended node for convenience.
-     */
-    Node appendNode(Node tok) {
-	if(sNode_ is null) {
-	    cNode_=tok;
-	    sNode_=tok;
-	}
-	else {
-	    cNode_.next=tok;
-	    cNode_=tok;
-	}
-	return tok;
-    }
-    
-    Regex!char heading;
-    void parseHeading(Captures!string caps) {
-    }
-    static Regex!char commentLine;
-    void parseCommentLine(Captures!string caps) {
-	appendNode(new SimpleNode(caps.hit)).isComment=true;
-    }
-
     static Regex!char varAssignment;
     void parseVarAssignment(Captures!string caps) {
 	debug(orgparser) { import std.stdio; writefln("Found variable: %s:%s", caps["variable"], caps["value"]); }
@@ -120,11 +177,7 @@ private:
     }
     string input_;
     int pos_;
-    immutable(char)* cTextStart_;
-    Node sNode_;
-    Node cNode_;
-    string[string] cVariables_;
-    TodoWords todoKeys_;
+    OrgContext context_;
 }
 
 unittest {
