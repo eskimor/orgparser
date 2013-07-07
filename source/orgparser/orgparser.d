@@ -1,24 +1,28 @@
 module orgparser.orgparser;
 
-import orgparser.token;
+import orgparser.node;
 
 import std.range;
 import std.regex;
 import std.conv;
 
+
 class OrgParser {
-    this(string input) {
+    this(string input, int pos, TodoWords todoKeys) {
 	input_=input;
-	todoKeywords_=["TODO", "DONE"];
-	heading = regex(`^(\*+) (?:\s+(TODO|DONE)){0,1} (?:\s+(\[#\w\])){0,1} \s+(.*?) (?:\s+(:(?:\w|@)+)(:(?:\w|@)+)*:){0,1} [\s--\n]*`, "x");
+	pos_=pos;
+	todoKeys_=todoKeys;
+	heading = regex(`^(?<=\n)(\*+) (?:\s+(TODO|DONE)){0,1} (?:\s+(\[#\w\])){0,1} \s+(.*?) (?:\s+(:(?:\w|@)+)(:(?:\w|@)+)*:){0,1} [\s--\n]*`, "x");
 
     }
-    void parse() {
-	while(!input_.empty) {
-	    auto c=input_.front;
-	    if(parseToken!"commentLine"()) 
+    Node parse() {
+	while(!current.empty) {
+	    auto c=current.front;
+	    if(parseNode!"heading"())
 		continue;
-	    else if(parseToken!"varAssignment"())
+	    else if(parseNode!"commentLine"()) 
+		continue;
+	    else if(parseNode!"varAssignment"())
 		continue;
 	    else { // Just text
 		debug(orgparser){import std.stdio; writefln("Found text");}
@@ -27,9 +31,6 @@ class OrgParser {
 		input_.popFront();
 	    }
 	}
-    }
-    unittest {
-	
     }
     /**
      * Parse something specified by what.
@@ -40,16 +41,16 @@ class OrgParser {
      * Params:
      *  what = What to parse. Must be one of the regex'es defined in this class.
      */
-    bool parseToken(string what)() {
+    bool parseNode(string what)() {
 	import std.uni;
 	mixin("auto res=input_.match("~what~");");
 	if (!res)
 	    return false;
-	assert(res.front.pre.empty, text("pre has to be empty for consumingMatch! It was: ", res.front.pre));
+	input_=input_[res.front.pre.length..$];
 	// Ok append leading text:
 	if(cTextStart_ !is null) {
 	    string text=cTextStart_[0..(input_.ptr-cTextStart_)];
-	    appendToken(new SimpleToken(text));
+	    appendNode(new SimpleNode(text));
 	    cTextStart_=null;
 	}
 	input_=input_[res.front.hit.length .. $]; // Going forward ...
@@ -57,22 +58,25 @@ class OrgParser {
 	return true;
     }
 private:
+    string current() @property {
+	return input_[pos_ .. $];
+    }
     /**
-     * Append token tok to cToken_ and make it the new cToken_.
+     * Append node tok to cNode_ and make it the new cNode_.
      *
      * Params:
-     *  tok = The token to append and which will become the new current token.
+     *  tok = The node to append and which will become the new current node.
      * Returns:
-     *  The appended token for convenience.
+     *  The appended node for convenience.
      */
-    Token appendToken(Token tok) {
-	if(sToken_ is null) {
-	    cToken_=tok;
-	    sToken_=tok;
+    Node appendNode(Node tok) {
+	if(sNode_ is null) {
+	    cNode_=tok;
+	    sNode_=tok;
 	}
 	else {
-	    cToken_.next=tok;
-	    cToken_=tok;
+	    cNode_.next=tok;
+	    cNode_=tok;
 	}
 	return tok;
     }
@@ -82,7 +86,7 @@ private:
     }
     static Regex!char commentLine;
     void parseCommentLine(Captures!string caps) {
-	appendToken(new SimpleToken(caps.hit)).isComment=true;
+	appendNode(new SimpleNode(caps.hit)).isComment=true;
     }
 
     static Regex!char varAssignment;
@@ -106,7 +110,7 @@ private:
 		heading=regex(new_heading, "x");
 	    }
 	}
-	appendToken(new SimpleToken(caps.hit));
+	appendNode(new SimpleNode(caps.hit));
     }
     
 
@@ -115,11 +119,12 @@ private:
 	varAssignment = regex(`^#\+(?P<variable>\w+):(?P<value>.*)`);
     }
     string input_;
+    int pos_;
     immutable(char)* cTextStart_;
-    Token sToken_;
-    Token cToken_;
+    Node sNode_;
+    Node cNode_;
     string[string] cVariables_;
-    string[] todoKeywords_;
+    TodoWords todoKeys_;
 }
 
 unittest {
@@ -135,13 +140,13 @@ unittest {
     writefln("Following todo keywords are active: %s", parser.todoKeywords_);
     assert(parser.cVariables_["TODO"]==" NOTDONE | DONE");
     assert(parser.todoKeywords_==["NOTDONE", "DONE"]);
-    writefln("Found text: '%s'", parser.sToken_.text);
-    assert(parser.sToken_.text == "* Some heading\n");
+    writefln("Found text: '%s'", parser.sNode_.text);
+    assert(parser.sNode_.text == "* Some heading\n");
     
-    assert(parser.sToken_.next.text == "               # Comment!");
-    assert(parser.sToken_.next.next.text == "\n");
-    assert(parser.cToken_==parser.sToken_.next.next.next);
-    assert(parser.cToken_.text=="#+TODO: NOTDONE | DONE");
+    assert(parser.sNode_.next.text == "               # Comment!");
+    assert(parser.sNode_.next.next.text == "\n");
+    assert(parser.cNode_==parser.sNode_.next.next.next);
+    assert(parser.cNode_.text=="#+TODO: NOTDONE | DONE");
  
 }
 private:
