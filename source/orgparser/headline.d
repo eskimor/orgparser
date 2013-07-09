@@ -17,7 +17,10 @@ class HeadLine : CompositeNode {
 	parts_[3]=parser.parsePriority();
 	parts_[4]=parser.regexParse(ws);
 
-	parts_[5]=
+	auto subparser=parser.subParser(regex(`(\s+(:(\w|@)+)(:(\w|@)+)*:){0,1}\s*?\n`));
+	parts_[5]=subparser.parseText();
+	parts_[6]=parser.regexParse(ws);
+	parts_[7]=parser.parseTagsQuasi();
 	   
 	auto r=makeHeadingRegex(todoKeys);
 	auto res=data[pos..$].match(r);

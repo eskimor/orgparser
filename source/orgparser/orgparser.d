@@ -22,7 +22,7 @@ class OrgParser {
      * Apply regular expression at pos and returns SimpleText matching it.
      *
      * The provided regular expression must match from the beginning
-     * or not at all. (Put a leading ^ to ensure this.
+     * or not at all. (Put a leading ^ to ensure this.)
      */
     SimpleText regexParse(Regex!char r) {
 	auto current=data[pos..$];
@@ -114,24 +114,41 @@ class OrgParser {
 	pos_+=res.captures[0].length;
 	return new SimpleText(prio);
     }
-    
+
+    /**
+     * Parse a link.
+     *
+     * If no link is found at pos, null is returned.
+     */
+    Link parseLink() {
+	auto res=current.match(`^\[\[(?P<link>.*?)\](\[?P<description>.*?)\]){0,1}\]`);
+	if(!res)
+	    return null;
+	auto captures=res.captures;
+	pos_+=captures[0].length;
+	return new Link(captures["link"], captures["description"]);
+    }
     /**
      * The current context of the org file.
      *
      * Contains valid todo key words, priorities, variables, ...
      */
-    ref OrgContext context() {
-	return context_;
-    }
+    abstract ref OrgContext context();
 
     /**
      * Create a parser from pos until 'until'
      *
      * The part of the input that gets passed to the new parser is
      * considered consumed in this one.
+     *
+     * If 'until' is not found, null is returned.
      */
     OrgParser subParser(Regex!char until) {
-	current.
+	auto res=current.match(until);
+	if(!res)
+	    return null;
+	auto subparser=new SubOrgParser(input_[0 .. (res.captures.front.ptr-input_.ptr)], pos_, this);
+	pos_+=res.captures.front.ptr-current.ptr;
     }
     /**
      * Prints exception with context where in the org file the error happened.
@@ -202,6 +219,31 @@ unittest {
     assert(parser.cNode_.text=="#+TODO: NOTDONE | DONE");
  
 }
+
+class RootOrgParser : OrgParser {
+    this(string input_, int pos) {
+	super(input_, pos);
+    }
+    
+    override ref OrgContext context() {
+	return context_;
+    }
+private:
+    OrgContext context_;
+}
+
+class SubOrgParser : OrgParser {
+    private this(string input_, int pos, OrgParser parent) {
+	super(input_, pos);
+    }
+    
+    override ref OrgContext context() {
+	return parent.context();
+    }
+private:
+    OrgParser parent_;
+}
+
 private:
 string capitalizeOnly(string input) {
     import std.uni;
